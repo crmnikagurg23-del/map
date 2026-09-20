@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>საქართველოს მოგზაურთა რუკა - Map MVP</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col">
+
+    <!-- ჰედერი -->
+    <header class="bg-emerald-600 text-white shadow-md p-4 flex justify-between items-center z-10">
+        <h1 class="text-xl font-bold">🗺️ საქართველოს მოგზაურთა რუკა (MVP)</h1>
+        <p class="text-sm bg-emerald-700 px-3 py-1 rounded-full">მონიშნე ადგილი რუკაზე</p>
+    </header>
+
+    <!-- მთავარი კონტეინერი -->
+    <div class="flex flex-1 relative overflow-hidden">
+        
+        <!-- რუკა -->
+        <div id="map" class="flex-1 h-full z-0"></div>
+
+        <!-- ადგილის დამატების / დეტალების საიდბარი -->
+        <div id="sidebar" class="w-96 bg-white shadow-2xl z-10 p-6 overflow-y-auto flex flex-col justify-between">
+            <div>
+                <h2 id="sidebar-title" class="text-lg font-bold text-gray-800 mb-4">📍 ადგილის დამატება</h2>
+                
+                <!-- ინსტრუქცია -->
+                <div id="instruction-box" class="bg-blue-50 border-l-4 border-blue-500 p-3 mb-4 text-sm text-blue-700">
+                    დააკლიკე საქართველოს რუკის ნებისმიერ წერტილს, რომ იქ მონიშნო ადგილი და შეავსო ინფორმაცია.
+                </div>
+
+                <!-- ფორმა (თავიდან დამალულია სანამ რუკაზე არ დააკლიკებ) -->
+                <form id="place-form" class="space-y-4 hidden">
+                    <input type="hidden" id="lat">
+                    <input type="hidden" id="lng">
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">ადგილის სახელწოდება</label>
+                        <input type="text" id="name" required class="mt-1 block w-full rounded-md border border-gray-300 p-2 shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">კატეგორია</label>
+                        <select id="category" class="mt-1 block w-full rounded-md border border-gray-300 p-2 shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                            <option value="მაღაზია">🛒 მაღაზია / მარკეტი</option>
+                            <option value="ბუნება">🏕️ ბუნება / კარვის ადგილი</option>
+                            <option value="წყარო">💧 წყარო</option>
+                            <option value="ისტორიული">🏛️ ისტორიული ადგილი</option>
+                            <option value="სხვა">📍 სხვა მნიშვნელოვანი წერტილი</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">როგორ მივიდეთ (ინსტრუქცია)</label>
+                        <textarea id="directions" rows="3" placeholder="მაგ: მიდის მხოლოდ მაღალი გამავლობის ჯიპი, ან ფეხით 20 წუთი..." class="mt-1 block w-full rounded-md border border-gray-300 p-2 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">ფოტოს ლინკი (URL)</label>
+                        <input type="url" id="photo" placeholder="https://example.com/photo.jpg" class="mt-1 block w-full rounded-md border border-gray-300 p-2 shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                    </div>
+
+                    <div class="flex space-x-2">
+                        <button type="submit" class="flex-1 bg-emerald-600 text-white py-2 px-4 rounded-md hover:bg-emerald-700 transition">შენახვა</button>
+                        <button type="button" id="cancel-btn" class="bg-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-400 transition">გაუქმება</button>
+                    </div>
+                </form>
+
+                <!-- არსებული ლოკაციების სია -->
+                <div id="locations-list" class="mt-6 border-t pt-4">
+                    <h3 class="text-md font-semibold text-gray-700 mb-2">📋 ბოლო დამატებული ადგილები</h3>
+                    <div id="list-container" class="space-y-2 max-h-60 overflow-y-auto">
+                        <!-- აქ დინამიურად ჩაჯდება სია -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-xs text-gray-400 text-center mt-4">
+                საქართველოს მოგზაურთა პლატფორმა © 2026
+            </div>
+        </div>
+    </div>
+
+    <!-- ჯავასკრიპტი -->
+    <script>
+        // რუკის ინიციალიზაცია (ცენტრი საქართველო - თბილისი)
+        const map = L.map('map').setView([42.15, 43.68], 8);
+
+        // OpenStreetMap ფენა
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // ადგილების მასივი (ინახება localStorage-ში)
+        let places = JSON.parse(localStorage.getItem('travel_places')) || [
+            {
+                id: 1,
+                name: 'ჟინვალის წყარო და მარკეტი',
+                category: 'მაღაზია',
+                directions: 'მთავარ გზასთან ახლოს, იდეალურია გზად პროდუქტების შესაძენად.',
+                photo: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=400&q=80',
+                lat: 42.129,
+                lng: 44.700
+            }
+        ];
+
+        const form = document.getElementById('place-form');
+        const instructionBox = document.getElementById('instruction-box');
+        const sidebarTitle = document.getElementById('sidebar-title');
+        const listContainer = document.getElementById('list-container');
+        let markersLayer = L.layerGroup().addTo(map);
+
+        // რუკაზე მარკერების გამოჩენა
+        function renderMarkers() {
+            markersLayer.clearLayers();
+            listContainer.innerHTML = '';
+
+            if (places.length === 0) {
+                listContainer.innerHTML = '<p class="text-xs text-gray-500">ჯერ არ არის ადგილები დამატებული.</p>';
+                return;
+            }
+
+            places.forEach(place => {
+                // რუკის მარკერი
+                const marker = L.marker([place.lat, place.lng]).addTo(markersLayer);
+                
+                let popupContent = `
+                    <div class="p-2 max-w-xs">
+                        <span class="text-xs font-bold text-emerald-600 uppercase">${place.category}</span>
+                        <h3 class="font-bold text-base text-gray-900">${place.name}</h3>
+                        <p class="text-sm text-gray-600 mt-1"><strong>როგორ მივიდეთ:</strong> ${place.directions}</p>
+                `;
+                if(place.photo) {
+                    popupContent += `<img src="${place.photo}" class="mt-2 rounded h-28 w-full object-cover">`;
+                }
+                popupContent += `</div>`;
+
+                marker.bindPopup(popupContent);
+
+                // სიის ელემენტი საიდბარში
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'p-2 bg-gray-50 rounded border hover:bg-emerald-50 cursor-pointer text-sm';
+                itemDiv.innerHTML = `<strong>${place.name}</strong> <span class="text-xs text-gray-500 block">(${place.category})</span>`;
+                itemDiv.onclick = () => {
+                    map.setView([place.lat, place.lng], 14);
+                    marker.openPopup();
+                };
+                listContainer.appendChild(itemDiv);
+            });
+        }
+
+        // რუკაზე დაკლიკების მოვლენა
+        map.on('click', function(e) {
+            const lat = e.latlng.lat;
+            const lng = e.latlng.lng;
+
+            document.getElementById('lat').value = lat;
+            document.getElementById('lng').value = lng;
+
+            instructionBox.classList.add('hidden');
+            form.classList.remove('hidden');
+            sidebarTitle.textContent = "📍 ახალი ადგილის დამატება";
+            
+            // დროებითი მარკერი ასარჩევად
+            L.popup()
+                .setLatLng(e.latlng)
+                .setContent("აქ გსურთ ადგილის დამატება? შეავსეთ ფორმა მარჯვნივ.")
+                .openOn(map);
+        });
+
+        // ფორმის გაუქმება
+        document.getElementById('cancel-btn').onclick = function() {
+            form.reset();
+            form.classList.add('hidden');
+            instructionBox.classList.remove('hidden');
+            sidebarTitle.textContent = "📍 ადგილის დამატება";
+            map.closePopup();
+        };
+
+        // ფორმის დამახსოვრება
+        form.onsubmit = function(e) {
+            e.preventDefault();
+
+            const newPlace = {
+                id: Date.now(),
+                name: document.getElementById('name').value,
+                category: document.getElementById('category').value,
+                directions: document.getElementById('directions').value,
+                photo: document.getElementById('photo').value,
+                lat: parseFloat(document.getElementById('lat').value),
+                lng: parseFloat(document.getElementById('lng').value)
+            };
+
+            places.push(newPlace);
+            localStorage.setItem('travel_places', JSON.stringify(places));
+
+            form.reset();
+            form.classList.add('hidden');
+            instructionBox.classList.remove('hidden');
+            sidebarTitle.textContent = "📍 ადგილის დამატება";
+            map.closePopup();
+
+            renderMarkers();
+        };
+
+        // საწყისი რენდერი
+        renderMarkers();
+    </script>
+</body>
+</html>
